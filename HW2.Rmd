@@ -1,0 +1,162 @@
+---
+title: "Analysis of Energy Demand in Victoria"
+output: html_notebook
+author: "Kristian James Guinto (s3826723)"
+---
+
+## Library Imports
+```{r}
+library(tidyr)
+library(dplyr)
+library(lubridate)
+```
+
+## Import and Merge Energy Data sets
+```{r}
+# intialise dataframe with just column headers
+demand <- data.frame(REGION=NA,
+                     SETTLEMENTDATE=NA,
+                     TOTALDEMAND=NA,
+                     RRP=NA,
+                     PERIODTYPE=NA)
+
+# load data from 2014 to 2018
+dir <- getwd()
+for(state in c("/VIC/", "/NSW/")){
+  for(y in c("2014","2015","2016","2017","2018")){
+    for(m in seq(1,12)){ # load data for all months
+      if(m < 10) { mon <- paste0("0",as.character(m)) }
+      else { (mon <- as.character(m)) }
+      
+      fName = paste0(dir,state,y,"_",mon,".csv")
+      tempDf <- read_csv(fName)
+      demand <-  rbind(demand, tempDf)
+    }
+  }
+}
+demand %>% head()
+demand %>% dim()
+```
+
+```{r}
+dir <- getwd()
+path <- paste0(dir,"/VIC/2020_08.csv")
+trial <- read_csv(path)
+trial %>% head()
+```
+
+## Import weather data sets
+```{r}
+path <- paste0(getwd(),"/WeatherData/")
+# load the 4 data sets for weather
+maxTemp <- read_csv(paste0(path,"max_temp_melbourne.csv"))
+maxTemp %>% head()
+```
+
+## Import holiday data sets
+source: https://data.gov.au/dataset/ds-dga-b1bc6077-dadd-4f61-9f8c-002ab2cdff10/details
+```{r}
+
+```
+
+
+```{r}
+mobility_AU[-1] %>%
+  gather(key = "key", value = "value", -Date) %>%
+  ggplot(aes(x=Date, y=value)) +
+  geom_line() + facet_grid(rows = vars(key))
+  
+```
+
+```{r}
+# helper function replace missing with mean of previous and next non null values
+fillMeanAdj <- function(d){
+  for(i in seq(from=1,to=length(d),by=1)){
+    if(is.na(d[i])){
+      x=1
+      prevVal <- d[i-x]
+      while(is.na(prevVal)){
+        prevVal <- d[i-x]
+        x = x + 1
+      }
+      x=1
+      nextVal <- d[i+x]
+      while(is.na(nextVal)){
+        nextVal <- d[i+x]
+        x = x + 1
+      }
+      
+      d[i] = (nextVal + prevVal)/2
+    }
+  }
+  return(d);
+}
+```
+
+### Non-decreasing value
+A check for non-decreasing value will also be conducted since the numbers on the data set represent cumulative numbers. This will be done by first taking the lag-1 difference for all variables then checking if these differences are negative. For a non-decreasing sequence, all lag-1 difference must be positive. The results will be summarised by counting the number of negative lag-1 difference per column
+```{r}
+# Detection of non-decreasing sequence
+# helper function to create lag-1 difference. Na's are filled with 0's
+daily_1 <- function(x){
+  if(is.numeric(x)){
+    d <- x - lag(x) # subtracts the data with a lagged 1 copy of the data
+    d[is.na(d)] <- 0 # Na is expected on first row, fill this with 0
+    return (d)
+  }
+}
+# helper function to summarise results by getting the sum of negative boolean mask
+sum.negative <- function(x){
+  return (sum(x < 0))
+}
+
+is.negative <- function(x){
+  return(x < 0)
+}
+
+lag1_diff <- covid_AU %>% 
+  select(NSW:Total_Deaths) %>% # select numerical variables
+  lapply(daily_1) # compute for lag-1 difference
+
+sapply(lag1_diff, sum.negative) # get count of negative numbers per column
+
+```
+```{r}
+diff(covid_AU$NSW)
+```
+
+
+```{r}
+covid_AU$NSW[diff(covid_AU$NSW) < 0] <- NA
+```
+
+```{r}
+covid_AU <- covid_AU %>% fill(NSW, .direction = "up")
+```
+
+
+```{r}
+neg.mask <- sapply(lag1_diff, is.negative)
+covid_AU[-1][neg.mask] <- NA
+```
+
+```{r}
+colSums(is.na(covid_AU))
+```
+
+***
+To correct instances of decreasing cumulative numbers, the absolute negative lag-1 differences will be added to the respective variables. 
+
+```{r}
+# Correction
+covid_AU <- covid_AU %>% 
+  fill(NSW:Total_Deaths, .direction = "up")
+  
+```
+
+```{r}
+
+```
+
+
+
